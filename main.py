@@ -1,9 +1,19 @@
 import os, sys, msvcrt, time, random, math
 
+#helpers
 def Clamp(i, a, b):
 	if a > i: i = a
 	if b < i: i = b
 	return i
+def RadiusCoordinates(Radius):
+	ret = []
+	for x in xrange(-Radius-1, Radius+2):
+		for y in xrange(-Radius-1, Radius+2):
+			if math.sqrt(x**2 + y**2) <= Radius:
+				ret.append((x, y))
+	return ret
+
+#le game classes:
 class terminal:
 	def __init__(self):
 		os.system("mode 120,46")#should be 45, but shit's niggertastic
@@ -61,63 +71,16 @@ class cmd:
 		self.size = (114, 8)
 		self.lines = []
 		
-		# self.c = 10
-		# self.cursor = False
-		# self.cPos = 0
-		# self.input = [" " for _ in xrange(self.size[0])]
-		# self.inputbuffer = []
-		
 		self.updated = False
 	def Print(self, string):
 		self.lines.append(string[:self.size[0]] + " "*(self.size[0]-min((len(string),self.size[0]))))
-		# if len(self.lines) > self.size[1]-1: self.lines.pop(0)
 		if len(self.lines) > self.size[1]: self.lines.pop(0)
 		self.updated = True
-	def step(self):
-		# self.c -= 1
-		# if not self.c:
-			# self.c = 10
-			# self.cursor = not self.cursor
-			# if self.cPos < self.size[0]:
-				# self.input[self.cPos] = "_" if self.cursor else " "
-			# self.updated = True
-		
-		# if self.inputbuffer:
-			# self.updated = True
-			# for char in self.inputbuffer:
-				# if char == "\b":
-					# if self.cPos < self.size[0]:
-						# self.input[self.cPos] = " "
-					# self.cPos -= 1
-					# self.input[self.cPos] = "_" if self.cursor else " "
-				# elif char in ("\n", "\r"):
-					# if self.cPos < self.size[0]:
-						# self.input[self.cPos] = " "
-					# self.Print("".join(self.input))
-					# self.input = [" " for _ in xrange(self.size[0])]
-					# self.cPos = 0
-					# if self.cursor:
-						# self.input[0] = "_"
-				# elif self.cPos < self.size[0]:
-					# if char == "\t":
-						# self.input[self.cPos] = " "
-					# else:
-						# self.input[self.cPos] = char
-					# self.cPos += 1
-					# if self.cPos < self.size[0]:
-						# self.input[self.cPos] = "_" if self.cursor else " "
-			# self.inputbuffer = []
-		
-		#rendah tiem!
+	def render(self):
 		if self.updated:
 			if self.lines:
 				terminal.blit(self.lines, self.pos)
-			# #terminal.blit(["".join(self.input)], (self.pos[0], self.pos[1]+len(self.lines)))
-			# terminal.blit([self.input], (self.pos[0], self.pos[1]+len(self.lines)))
 			self.updated = False
-	# def keypress(self, char):
-		# self.inputbuffer.append(char)
-	pass
 
 class inventory:
 	def __init__(self):
@@ -138,6 +101,9 @@ class inventory:
 						("== A Tree ==", "Sells for 5 Coins", "You get 5 wood for each tree", "Used to make campfires", "Chop down with SPACE"),
 						("== Gold ore ==", "Valuable resource", "One ore gives around 10 gold ingots", "Used for crafting and sells for a", "good price.", "Mine it with SPACE."),
 						("== Diamond ==", "An exeptionally rare find!", "Sells for a high price and it's one", "of the strongest materials you can", "find.", "Mine it with SPACE."))
+		self.mobinfo = (("== Goblin ==", "Has a lot of health and can take", "a hit. Drops 10 coins."),
+						("== Imp ==", "Has little health, but powerfull", "attacks! Drops 15 coins."),
+						("== Bat ==", "Annoying little flying brats.", "A simple slay, but it only drops 10", "coins."))
 	def add(self, item, count=1):
 		if item in self.bag:
 			self.bag[item] += count
@@ -227,13 +193,20 @@ class inventory:
 			self.facingupdate = False
 			
 			#clean area:
-			terminal.rectangle((82, 3), (35, 14), " ", True)
+			terminal.rectangle((82, 3), (36, 14), " ", True)
 			
-			if world.facing[0]:
+			if world.facing[0]:#world blocks:
 				for i, line in enumerate(self.worldinfo[world.facing[0]-1]):
 					if line: terminal.blit([line], (82, 3+i))
-			elif world.facing[1] >= 0:
-				pass
+			elif world.facing[1] >= 0:#entities:
+				pos, type, lv, items, at, hp, mp = world.entities[world.facing[1]]
+				
+				for i, line in enumerate(self.mobinfo[type]):
+					if line: terminal.blit([line], (82, 3+i))
+				
+				terminal.blit(["Health:%s%i  Mana:%s%i" % (" "*(8-len(str(hp))), hp, " "*(11-len(str(mp))), mp)], (82, 15))
+				terminal.blit(["Attack:%s%i  Level:%s%i" % (" "*(8-len(str(at))), at, " "*(10-len(str(lv))), lv)], (82, 16))
+				
 
 class world:
 	def __init__(self):
@@ -260,17 +233,44 @@ class world:
 		self.creatures  =  (("GOB", "Goblin", 10, 1, 0, 2, 0.5, 0, {}, 0, {"Coins":10}),#(spr, name, base health, base attack, base mana, healthgain, attackgain, managain, item dictionary, item use chance %, drop dictionary)
 							("IMP", "Imp", 10, 2, 0, 1, 1, 0, {}, 0, {"Coins":15}),
 							("~o~", "Bat", 5, 1, 0, 0.5, 0.5, 0, {}, 0, {"Coins":5}))
-		self.entities = []#[x] = [pos, index, lv, items, attack, health, mana]
-		for i in xrange(self.worldsize[0]/20*self.worldsize[1]/20):
-			#5 bats:
-			
-			#3 goblins:
-			
-			#4 imps:
-			
+		self.entities = []#[x] = [pos, type, lv, items, attack, health, mana]
+		
+		#spawn the entities:
+		worst = (0, 0)
+		spawnrange = RadiusCoordinates(4)
+		for i in xrange(self.worldsize[0]/20*self.worldsize[1]/20):#for each 20*2 square block the world has, spawn:
+			#up to 8 bats, or up to 5 goblins or up to 6 imps
+			while 1:
+				x = random.randrange(0, self.worldsize[0])
+				y = random.randrange(0, self.worldsize[1])
+				
+				if not self.CheckOpen((x, y)): continue
+				
+				type, quantity = random.choice(((0, 5), (1, 6), (2, 8)))
+				dist = math.sqrt((x-self.townpos[0])**2 + (y-self.townpos[1])**2)
+				lv =  int(dist / 60) + 1*(random.randrange(0, 11) == 10)# + 1
+				
+				spr, name, bHP, bAT, bMP,  HPg, ATg, MPg, items, UC, drops = self.creatures[type]
+				
+				self.entities.append([[x, y], type, lv+1, items, bAT+int(ATg*lv), bHP+int(HPg*lv), bMP+int(MPg*lv)])
+				if lv > worst[0] or (lv == worst[0] and int(dist) < worst[1]): worst = (lv, int(dist))
+				
+				for _ in xrange(quantity-1):
+					x2, y2 = random.choice(spawnrange)
+					x2 += x
+					y2 += y
+					if self.CheckOpen((x2, y2)):
+						dist = math.sqrt((x2-self.townpos[0])**2 + (y2-self.townpos[1])**2)
+						lv =  int(dist / 60) + 1*(random.randrange(0, 11) == 10)# + 1
+						
+						self.entities.append([[x2, y2], type, lv+1, items, bAT+int(ATg*lv), bHP+int(HPg*lv), bMP+int(MPg*lv)])
+						if lv > worst[0] or (lv == worst[0] and int(dist) < worst[1]): worst = (lv, int(dist))
+				
+				break
 			
 			#self.spawn(random.choice((0, 0, 1, 2, 2)))
 			pass
+		if worst[0]: cmd.Print("The highest leveled monster on this map is LV%i and is currently %i blocks away from you" % worst)
 		
 		self.doStep = False
 		self.keys = "wasd "
@@ -419,6 +419,8 @@ class world:
 			for i in self.entities:
 				pass
 			
+			self.UpdateFacing()
+			
 			self.render()
 	def CheckOpen(self, (x, y), entities = True):#pos on map
 		if not 0 <= x < self.worldsize[0]:
@@ -447,7 +449,6 @@ class world:
 				inventory.statsupdate = True
 				self.orientation = key
 			self.doStep = True
-			self.UpdateFacing()
 		elif key in "ad":#move left/right
 			x, y = self.you[0]
 			if key == "a":
@@ -460,7 +461,6 @@ class world:
 				inventory.statsupdate = True
 				self.orientation = key
 			self.doStep = True
-			self.UpdateFacing()
 		elif key == " ":#action
 			x, y = self.facing[2]
 			if self.facing[0] == 2:#walls
@@ -478,8 +478,6 @@ class world:
 			elif self.facing[0] == 0 and self.facing[1] >= 0:#emptyspace, do entities:
 				pass
 			
-			self.UpdateFacing()
-			
 			self.doStep = True
 	def UpdateFacing(self):
 		x, y = self.you[0]
@@ -494,16 +492,18 @@ class world:
 		
 		prev = self.facing[:]
 		
-		if 0 <= x < self.worldsize[0] and 0 <= 2 < self.worldsize[1]:#If within the map:
+		if 0 <= x < self.worldsize[0] and 0 <= y < self.worldsize[1]:#If within the map:
 			self.facing[0] = self.world[x][y]
 			
-			if not self.facing[0]:
+			if self.facing[0]:
+				self.facing[1] = -1
+			else:
 				for i, entity in enumerate(self.entities):
 					if x == entity[0][0] and y == entity[0][1]:
 						self.facing[1] = i
 						break
-			else:
-				self.facing[1] = -1
+				else:
+					self.facing[1] = -1
 		else:
 			self.facing[0] = 0
 			self.facing[1] = -1
@@ -517,8 +517,8 @@ class world:
 		
 		entities = []
 		for i in self.entities:
-			if camx <= i[0] < camx+self.size[0] and camy <= i[1] < camy+self.size[1]:
-				entities.append[i]
+			if camx <= i[0][0] < camx+self.size[0] and camy <= i[0][1] < camy+self.size[1]:
+				entities.append(i)
 		
 		for y in xrange(camy, camy+self.size[1]):
 			line = []
@@ -537,10 +537,13 @@ class world:
 					line.append(self.spr[0])
 			render.append("".join(line))
 		terminal.blit(render, self.pos)
+
+#run game:		
 terminal = terminal()
 cmd = cmd()
 cmd.Print("Welcome to CMDRPG!")
 inventory = inventory()
+print "Generating the world..."
 world = world()
 
 
@@ -555,6 +558,8 @@ while 1:
 		if key in world.keys: world.Keypress(key)
 	
 	world.step()
-	cmd.step()
+	
+	cmd.render()
 	inventory.render()
+	
 	terminal.render()
