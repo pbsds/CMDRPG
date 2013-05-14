@@ -2,8 +2,8 @@ import os, sys, msvcrt, time, random, math
 
 #helpers
 def Clamp(i, a, b):
-	if a > i: i = a
-	if b < i: i = b
+	if i < a: i = a
+	if i > b: i = b
 	return i
 def RadiusCoordinates(Radius):
 	ret = []
@@ -12,6 +12,38 @@ def RadiusCoordinates(Radius):
 			if math.sqrt(x**2 + y**2) <= Radius:
 				ret.append((x, y))
 	return ret
+def Line((x,y), (x2,y2)):#Brensenhams line algorithm:
+	#Copied from someplace on the internet long ago
+	steep = 0
+	coords = []
+	dx = abs(x2 - x)
+	if (x2 - x) > 0:
+		sx = 1
+	else:
+		sx = -1
+	dy = abs(y2 - y)
+	if (y2 - y) > 0:
+		sy = 1
+	else:
+		sy = -1
+	if dy > dx:
+		steep = 1
+		x,y = y,x
+		dx,dy = dy,dx
+		sx,sy = sy,sx
+	d = (2 * dy) - dx
+	for i in range(0,dx):
+		if steep:
+			coords.append((y,x))
+		else:
+			coords.append((x,y))
+		while d >= 0:
+			y = y + sy
+			d = d - (2 * dx)
+		x = x + sx
+		d = d + (2 * dy)
+	coords.append((x2,y2))
+	return coords
 
 #le game classes:
 class terminal:
@@ -84,7 +116,7 @@ class cmd:
 
 class inventory:
 	def __init__(self):
-		self.bag = {"Coins":250, "Potion of health": 5, "Potion of mana":5, "Town Blinkwing":2}
+		self.bag = {"Coins":250, "Potion of Health": 5, "Potion of Mana":5, "Town Blinkwing":2}
 		self.page = 0
 		
 		self.bagupdate = True
@@ -128,6 +160,7 @@ class inventory:
 				self.UseItem(key)
 			else:
 				cmd.Print("You don't have any items in slot %s!" % key)
+			world.doStep = True
 		elif key in "xz":
 			if key == "x":
 				self.page += 1
@@ -149,7 +182,7 @@ class inventory:
 			self.take("Town blinkwing", 1)
 			cmd.Print("teleported back to town! 1 Town Blinkwing consumed.")
 			
-			world.doStep = True
+			
 			world.you[0] = [world.townpos[0], world.townpos[1] + 1]
 			world.orientation = "s"
 			world.UpdateFacing()
@@ -225,20 +258,21 @@ class world:
 					"HHH",#gold ore
 					"#*#")#diamond
 		
-		self.you = [playerpos, 1, 25, 25, 5, 5, ]#[pos, attack, health, max health, mana, max mana]
+		self.you = [playerpos, 3, 100, 100, 5, 5]#[pos, attack, health, max health, mana, max mana]
 		self.facing = [0, -1, [playerpos[0], playerpos[1]+1]]#[block, entity index, facingpos]
 		self.orientation = "s"#the last pressed movement button
 		self.sprYou = "\\o/"
 		
-		self.creatures  =  (("GOB", "Goblin", 10, 1, 0, 2, 0.5, 0, {}, 0, {"Coins":10}),#(spr, name, base health, base attack, base mana, healthgain, attackgain, managain, item dictionary, item use chance %, drop dictionary)
-							("IMP", "Imp", 10, 2, 0, 1, 1, 0, {}, 0, {"Coins":15}),
-							("~o~", "Bat", 5, 1, 0, 0.5, 0.5, 0, {}, 0, {"Coins":5}))
+		self.creatures  =  (("GOB", "Goblin", 10, 1, 0, 2, 0.5, 0, {}, 0, {"Coins":10, "Potion of Health":0.5}, 10),#(spr, name, base health, base attack, base mana, healthgain, attackgain, managain, item dictionary, item use chance %, drop dictionary, walk chance)
+							("IMP", "Imp", 10, 2, 0, 1, 1, 0, {}, 0, {"Coins":15, "Potion of Mana":0.5}, 18),
+							("~o~", "Bat", 5, 1, 0, 0.5, 0.5, 0, {}, 0, {"Coins":5}, 80))
 		self.entities = []#[x] = [pos, type, lv, items, attack, health, mana]
+		self.deathnote = []#indexes with those entities which shall die
 		
 		#spawn the entities:
 		worst = (0, 0)
 		spawnrange = RadiusCoordinates(4)
-		for i in xrange(self.worldsize[0]/20*self.worldsize[1]/20):#for each 20*2 square block the world has, spawn:
+		for i in xrange(self.worldsize[0]/25*self.worldsize[1]/25):#for each 20*2 square block the world has, spawn:
 			#up to 8 bats, or up to 5 goblins or up to 6 imps
 			while 1:
 				x = random.randrange(0, self.worldsize[0])
@@ -250,7 +284,7 @@ class world:
 				dist = math.sqrt((x-self.townpos[0])**2 + (y-self.townpos[1])**2)
 				lv =  int(dist / 60) + 1*(random.randrange(0, 11) == 10)# + 1
 				
-				spr, name, bHP, bAT, bMP,  HPg, ATg, MPg, items, UC, drops = self.creatures[type]
+				bHP, bAT, bMP,  HPg, ATg, MPg, items = self.creatures[type][2:9]
 				
 				self.entities.append([[x, y], type, lv+1, items, bAT+int(ATg*lv), bHP+int(HPg*lv), bMP+int(MPg*lv)])
 				if lv > worst[0] or (lv == worst[0] and int(dist) < worst[1]): worst = (lv, int(dist))
@@ -416,8 +450,74 @@ class world:
 		if self.doStep:
 			self.doStep = False
 			
-			for i in self.entities:
-				pass
+			#step entities:
+			for i, ((x, y), type, lv, items, at, hp, mp) in enumerate(self.entities):
+				if i in self.deathnote: continue
+				dist = math.sqrt((x-self.you[0][0])**2 + (y-self.you[0][1])**2)
+				if dist <= 7:#if close enought:
+					for x2, y2 in Line((x, y), self.you[0]):
+						if self.world[x2][y2]:
+							break
+					else:#if player in sight:
+						if dist > 1:#aproach player:
+							dir = math.atan2(y - self.you[0][1], self.you[0][0] - x) / math.pi * 180
+							x2, y2 = x, y
+							if -45 < dir <= 45:
+								x2 += 1
+							elif -135 < dir <= -45:
+								y2 += 1
+							elif 45 < dir <= 135:
+								y2 -= 1
+							else:
+								x2 -= 1
+							
+							if self.CheckOpen((x2, y2)):
+								self.entities[i][0][0] = x2
+								self.entities[i][0][1] = y2
+								continue
+							else:
+								x2, y2 = x, y
+								if -45 < dir <= 45:
+									if dir >= 0:
+										y2 -= 1
+									else:
+										y2 += 1
+								elif -135 < dir <= -45:
+									if dir >= -90:
+										x2 += 1
+									else:
+										x2 -= 1
+								elif 45 < dir <= 135:
+									if dir >= 90:
+										x2 -= 1
+									else:
+										x2 += 1
+								else:
+									if dir >= 0:
+										y2 += 1
+									else:
+										y2 -= 1
+								
+								if self.CheckOpen((x2, y2)):
+									self.entities[i][0][0] = x2
+									self.entities[i][0][1] = y2
+									continue
+						else:#Attack:
+							pass
+							continue
+				
+				#step around carelessly:
+				if random.randrange(1, 101) <= self.creatures[type][11]:
+					x2, y2 = random.choice(((1, 0), (-1, 0), (0, 1), (0, -1)))
+					if self.CheckOpen((x+x2, y+y2)):
+						self.entities[i][0][0] += x2
+						self.entities[i][0][1] += y2
+				
+			if self.deathnote:
+				self.deathnote.sort()
+				for i in self.deathnote[::-1]:
+					del self.entities[i]
+				self.deathnote = []
 			
 			self.UpdateFacing()
 			
@@ -476,8 +576,23 @@ class world:
 				self.world[x][y] = 2
 				inventory.add("Diamond")
 			elif self.facing[0] == 0 and self.facing[1] >= 0:#emptyspace, do entities:
-				pass
-			
+				for i, entity in enumerate(self.entities):
+					if x == entity[0][0] and y == entity[0][1]:
+						dmg = random.choice((0, int(self.you[1]/2), self.you[1], self.you[1], self.you[1], self.you[1], self.you[1], self.you[1], self.you[1], self.you[1], int(self.you[1]*1.3), int(self.you[1]*1.6), self.you[1]*2))
+						if dmg:
+							cmd.Print("You attacked %s, did %i damage." % (self.creatures[entity[1]][1], dmg))
+							self.entities[i][5] -= dmg
+							if self.entities[i][5] <= 0:
+								cmd.Print("%s was defeated." % self.creatures[entity[1]][1])
+								#del self.entities[i]
+								self.deathnote.append(i)
+								luck = int(random.randrange(3, 12)/5)
+								for item, n in self.creatures[entity[1]][10].items():#loot:
+									if int(n*luck): inventory.add(item, int(n*luck))
+						else:
+							cmd.Print("You attacked %s, but it missed..." % self.creatures[entity[1]][1])
+						break
+						
 			self.doStep = True
 	def UpdateFacing(self):
 		x, y = self.you[0]
@@ -509,7 +624,7 @@ class world:
 			self.facing[1] = -1
 		self.facing[2] = [x, y]
 		
-		if self.facing <> prev: inventory.facingupdate = True
+		if self.facing <> prev or self.facing[1] >= 0: inventory.facingupdate = True
 	def render(self):
 		render = []
 		camx = Clamp(self.you[0][0]-self.size[0]/2, 0, self.worldsize[0]-self.size[0])
