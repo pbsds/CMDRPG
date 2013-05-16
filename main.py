@@ -461,47 +461,68 @@ class world:
 					else:#if player in sight:
 						if dist > 1:#aproach player:
 							dir = math.atan2(y - self.you[0][1], self.you[0][0] - x) / math.pi * 180
-							x2, y2 = x, y
-							if -45 < dir <= 45:
-								x2 += 1
-							elif -135 < dir <= -45:
-								y2 += 1
-							elif 45 < dir <= 135:
-								y2 -= 1
-							else:
-								x2 -= 1
 							
-							if self.CheckOpen((x2, y2)):
-								self.entities[i][0][0] = x2
-								self.entities[i][0][1] = y2
-								continue
+							if dir in (0., 45., 90., 135., 180., -45., -90., -135., -180.):
+								x2, y2 = {0:(1, 0), 45:(1, -1), 90:(0, -1), 135:(-1, -1), 180:(-1, 0), -45:(1, 1), -90:(0, 1), -135:(-1, 1), -180:(-1, 0)}[int(dir)]
+								
+								if x2 and y2:
+									r = random.randrange(0, 2)
+									if self.CheckOpen((x+x2*r, y+y2*(1-r))):
+										self.entities[i][0][0] += x2*r
+										self.entities[i][0][1] += y2*(1-r)
+										continue
+									elif self.CheckOpen((x+x2*(1-r), y+y2*r)):
+										self.entities[i][0][0] += x2*(1-r)
+										self.entities[i][0][1] += y2*r
+										continue
+								else:
+									if self.CheckOpen((x+x2, y+y2)):
+										self.entities[i][0][0] += x2
+										self.entities[i][0][1] += y2
+										continue
 							else:
 								x2, y2 = x, y
+								
 								if -45 < dir <= 45:
-									if dir >= 0:
-										y2 -= 1
-									else:
-										y2 += 1
+									x2 += 1
 								elif -135 < dir <= -45:
-									if dir >= -90:
-										x2 += 1
-									else:
-										x2 -= 1
+									y2 += 1
 								elif 45 < dir <= 135:
-									if dir >= 90:
-										x2 -= 1
-									else:
-										x2 += 1
+									y2 -= 1
 								else:
-									if dir >= 0:
-										y2 += 1
-									else:
-										y2 -= 1
+									x2 -= 1
 								
 								if self.CheckOpen((x2, y2)):
 									self.entities[i][0][0] = x2
 									self.entities[i][0][1] = y2
 									continue
+								else:
+									x2, y2 = x, y
+									if -45 < dir <= 45:
+										if dir >= 0:
+											y2 -= 1
+										else:
+											y2 += 1
+									elif -135 < dir <= -45:
+										if dir >= -90:
+											x2 += 1
+										else:
+											x2 -= 1
+									elif 45 < dir <= 135:
+										if dir >= 90:
+											x2 -= 1
+										else:
+											x2 += 1
+									else:
+										if dir >= 0:
+											y2 += 1
+										else:
+											y2 -= 1
+									
+									if self.CheckOpen((x2, y2)):
+										self.entities[i][0][0] = x2
+										self.entities[i][0][1] = y2
+										continue
 						else:#Attack:
 							pass
 							continue
