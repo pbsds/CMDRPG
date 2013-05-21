@@ -50,7 +50,7 @@ class terminal:
 	def __init__(self):
 		os.system("mode 120,46")#should be 45, but shit's niggertastic
 		#os.system("Le RPG - by pbsds")
-		os.system("clear")
+		os.system("cls")
 		
 		self.updated = False
 		
@@ -116,7 +116,7 @@ class cmd:
 
 class inventory:
 	def __init__(self):
-		self.bag = {"Coins":250, "Potion of Health": 5, "Potion of Mana":5, "Town Blinkwing":2}
+		self.bag = {"Coins":100, "Potion of Health": 2, "Potion of Mana":1, "Town Blinkwing":1}
 		self.page = 0
 		
 		self.bagupdate = True
@@ -127,32 +127,46 @@ class inventory:
 		
 		self.keys = "123456789xz"
 		
-		self.worldinfo=(("== Town ==", "You fully heal when coming here", "You can sell your items by", "selecting them with the 1-9 key."),
+		self.worldinfo=(("== Merchant ==", "The town merchant.", "You can sell your items by", "selecting them with the 1-9 key."),
 						("== Stone ==", "It's in your way.", "You can hack it down with SPACE.", "Each stone gives 1 rubble."),
 						("== Dungeon / Cave entrance ==", "A nasty place crawling with monsters", "and loot. Do you dare step foot", "within and loot it?", "Enter with SPACE."),
 						("== A Tree ==", "Sells for 5 Coins", "You get 5 wood for each tree", "Used to make campfires", "Chop down with SPACE"),
 						("== Gold ore ==", "Valuable resource", "One ore gives around 10 gold ingots", "Used for crafting and sells for a", "good price.", "Mine it with SPACE."),
-						("== Diamond ==", "An exeptionally rare find!", "Sells for a high price and it's one", "of the strongest materials you can", "find.", "Mine it with SPACE."))
-		self.mobinfo = (("== Goblin ==", "Has a lot of health and can take", "a hit. Drops 10 coins."),
+						("== Diamond ==", "An exeptionally rare find!", "Sells for a high price and it's one", "of the strongest materials you can", "find.", "Mine it with SPACE."),
+						("== Anvil ==", "The anvil down by the forge.", "Owned by the towns merchant, and", "open for anyone to use.", "Select your materials with", "the 1-9 keys to craft"),
+						("== Forge ==", "The public forge. Always lit and", "ready to use. It's held lit", "by the towns merchant.", "Choose your material with", "the 1-9 keys to rafine."),
+						("== Inn ==", "You fully heal by sleeping here.", "Staying one night costs 20 coins.", "Press SPACE to sleep.", "Town Blinkwings are also sold here.", "You can buy 2 Blinkwings with", "a Diamond"))
+		self.mobinfo = (("== Goblin ==", "Has a lot of health and can take", "a few hits. Drops 10 coins."),
 						("== Imp ==", "Has little health, but powerfull", "attacks! Drops 15 coins."),
-						("== Bat ==", "Annoying little flying brats.", "A simple slay, but it only drops 10", "coins."))
-	def add(self, item, count=1):
+						("== Bat ==", "Annoying little flying brats.", "A simple slay, but it only drops 10", "coins. They tend to block", "your path."))
+		self.shopPrizes  = {"Potion of Health":100,
+							"Potion of Mana":130,
+							"Town Blinkwing":300,
+							"Spellbook of Fire Congrugation":1500,
+							"Spellbook of Bloodbending":1500,
+							"The Seed":12500,
+							"Candy":1250,#raises health
+							"Gold":3,
+							"Diamond":600,
+							"Diamond Sword":2500,#made of 3 diamonds + rafined addition
+							"Scroll of Earth wrath":50000}
+	def add(self, item, count=1, silent = False):
 		if item in self.bag:
 			self.bag[item] += count
 		else:
 			self.bag[item] = count
-		cmd.Print("Got %i %s!" % (count, item))
+		if not silent: cmd.Print("Got %i %s!" % (count, item))
 		self.bagupdate = True
 	def take(self, item, count):
 		if item not in self.bag:
 			return False
-		if self.bag[item] >= count:
+		if self.bag[item] < count:
 			return False
 		
 		self.bag[item] -= count
-		if self.bag[item] == 0:
-			del self.bag[item]
+		if self.bag[item] == 0: del self.bag[item]
 		self.bagupdate = True
+		
 		return True
 	def Keypress(self, key):
 		if key.isdigit():
@@ -176,21 +190,36 @@ class inventory:
 		list.sort()
 		item = list[int(key)-1+9*self.page]
 		
+		#if faceing the town:
 		if item == "Coins" and world.facing[0] == 1:
-			cmd.Print("There is nothing here to buy!")
+			cmd.Print("There is nothing here to buy!")#temp
+		elif world.facing[0] == 1:#merchant
+			if item in self.shopPrizes:
+				self.take(item, 1)
+				cmd.Print("You sold 1 %s" % item)
+				self.add("Coins", self.shopPrizes[item]*80/100)
+			else:
+				cmd.Print("You can't sell this...")
+		elif world.facing[0] == 9 and item == "Diamond":#The inn
+			self.take("Diamond", 1)
+			self.add("Town Blinkwing", 2)
+		#if in field:
 		elif item == "Town Blinkwing":
-			self.take("Town blinkwing", 1)
+			self.take("Town Blinkwing", 1)
 			cmd.Print("teleported back to town! 1 Town Blinkwing consumed.")
-			
 			
 			world.you[0] = [world.townpos[0], world.townpos[1] + 1]
 			world.orientation = "s"
 			world.UpdateFacing()
+			world.doStep = True
 			self.statsupdate = True
-		#elif item == "":
-		#	pass
+		elif item == "Rubble" and not world.facing[0] and world.facing[1] == -1:
+			self.take("Rubble", 1)
+			cmd.Print("You built up a wall of stone!")
+			world.world[world.facing[2][0]][world.facing[2][1]] = 2
+			world.doStep = True
 		else:
-			cmd.Print("You can't use that at the moment...")
+			cmd.Print("You cannot use this at the moment...")
 		
 		#self.bagupdate = True
 		pass
@@ -239,7 +268,6 @@ class inventory:
 				
 				terminal.blit(["Health:%s%i  Mana:%s%i" % (" "*(8-len(str(hp))), hp, " "*(11-len(str(mp))), mp)], (82, 15))
 				terminal.blit(["Attack:%s%i  Level:%s%i" % (" "*(8-len(str(at))), at, " "*(10-len(str(lv))), lv)], (82, 16))
-				
 
 class world:
 	def __init__(self):
@@ -250,15 +278,18 @@ class world:
 		playerpos = self.GenWorld((250, 250))
 		
 		#the sprites the world is made of:
-		self.spr = ("   ",#nothing
-					"TWN",#town
-					"###",#blockade
-					"/ \\",#entrance
-					'"Y"',#Tree
-					"HHH",#gold ore
-					"#*#")#diamond
+		self.spr = ("   ",#0 - nothing
+					"MRC",#1 - Town - Trade
+					"###",#2 - blockade/stone
+					"/ \\",#3- entrance
+					'"Y"',#4 - Tree
+					"HHH",#5 - gold ore
+					"#*#",#6 - diamond
+					"ANV",#7 - Town - Anvil
+					"FRG",#8 - Town - Forge
+					"INN")#9 - Town - Inn
 		
-		self.you = [playerpos, 3, 100, 100, 5, 5]#[pos, attack, health, max health, mana, max mana]
+		self.you = [playerpos, 3, 5, 100, 0, 5]#[pos, attack, health, max health, mana, max mana]
 		self.facing = [0, -1, [playerpos[0], playerpos[1]+1]]#[block, entity index, facingpos]
 		self.orientation = "s"#the last pressed movement button
 		self.sprYou = "\\o/"
@@ -270,6 +301,14 @@ class world:
 		self.deathnote = []#indexes with those entities which shall die
 		
 		#spawn the entities:
+		print "Spawning monsters..."
+		self.SpawnMonsters()
+		
+		self.doStep = False
+		self.keys = "wasd "
+		
+		self.render()
+	def SpawnMonsters(self):
 		worst = (0, 0)
 		spawnrange = RadiusCoordinates(4)
 		for i in xrange(self.worldsize[0]/25*self.worldsize[1]/25):#for each 20*2 square block the world has, spawn:
@@ -278,53 +317,49 @@ class world:
 				x = random.randrange(0, self.worldsize[0])
 				y = random.randrange(0, self.worldsize[1])
 				
+				if math.sqrt((x-self.townpos[0])**2 + (y-self.townpos[1])**2) < 15: continue
 				if not self.CheckOpen((x, y)): continue
-				
-				type, quantity = random.choice(((0, 5), (1, 6), (2, 8)))
-				dist = math.sqrt((x-self.townpos[0])**2 + (y-self.townpos[1])**2)
-				lv =  int(dist / 60) + 1*(random.randrange(0, 11) == 10)# + 1
-				
-				bHP, bAT, bMP,  HPg, ATg, MPg, items = self.creatures[type][2:9]
-				
-				self.entities.append([[x, y], type, lv+1, items, bAT+int(ATg*lv), bHP+int(HPg*lv), bMP+int(MPg*lv)])
-				if lv > worst[0] or (lv == worst[0] and int(dist) < worst[1]): worst = (lv, int(dist))
-				
-				for _ in xrange(quantity-1):
-					x2, y2 = random.choice(spawnrange)
-					x2 += x
-					y2 += y
-					if self.CheckOpen((x2, y2)):
-						dist = math.sqrt((x2-self.townpos[0])**2 + (y2-self.townpos[1])**2)
-						lv =  int(dist / 60) + 1*(random.randrange(0, 11) == 10)# + 1
-						
-						self.entities.append([[x2, y2], type, lv+1, items, bAT+int(ATg*lv), bHP+int(HPg*lv), bMP+int(MPg*lv)])
-						if lv > worst[0] or (lv == worst[0] and int(dist) < worst[1]): worst = (lv, int(dist))
-				
 				break
 			
-			#self.spawn(random.choice((0, 0, 1, 2, 2)))
-			pass
+			type, quantity = random.choice(((0, 5), (1, 6), (2, 8)))
+			dist = math.sqrt((x-self.townpos[0])**2 + (y-self.townpos[1])**2)
+			lv =  int(dist / 60) + 1*(random.randrange(0, 11) == 10)# + 1
+			
+			bHP, bAT, bMP,  HPg, ATg, MPg, items = self.creatures[type][2:9]
+			
+			self.entities.append([[x, y], type, lv+1, items, bAT+int(ATg*lv), bHP+int(HPg*lv), bMP+int(MPg*lv)])
+			if lv > worst[0] or (lv == worst[0] and int(dist) < worst[1]): worst = (lv, int(dist))
+			
+			for _ in xrange(quantity-1):
+				x2, y2 = random.choice(spawnrange)
+				x2 += x
+				y2 += y
+				if self.CheckOpen((x2, y2)):
+					dist = math.sqrt((x2-self.townpos[0])**2 + (y2-self.townpos[1])**2)
+					lv =  int(dist / 60) + 1*(random.randrange(0, 11) == 10)# + 1
+					
+					self.entities.append([[x2, y2], type, lv+1, items, bAT+int(ATg*lv), bHP+int(HPg*lv), bMP+int(MPg*lv)])
+					if lv > worst[0] or (lv == worst[0] and int(dist) < worst[1]): worst = (lv, int(dist))
+		
 		if worst[0]: cmd.Print("The highest leveled monster on this map is LV%i and is currently %i blocks away from you" % worst)
-		
-		self.doStep = False
-		self.keys = "wasd "
-		
-		self.render()
 	def GenWorld(self, size=(150, 150)):
+		print "Generating the world..."
 		self.worldsize = size
 		self.world = [[None for _ in xrange(size[0])] for _ in xrange(size[1])]#[x][y]
 		
-		
+		print "	building the town..."
 		self.townpos = (random.randrange(10, size[0]-10), random.randrange(10, size[1]-10))
 		playerpos = [self.townpos[0], self.townpos[1]+2]
 		
 		#the town is preset, the rest is generated:
-		for x in xrange(-8,9):
-			for y in xrange(-8, 9):
-				if math.sqrt(x*x + y*y) <= 8:
-					self.world[self.townpos[0]+x][self.townpos[1]+y] = 0
+		for x, y in RadiusCoordinates(8):
+			if math.sqrt(x*x + y*y) <= 8:
+				self.world[self.townpos[0]+x][self.townpos[1]+y] = 0
 		
-		self.world[self.townpos[0]][self.townpos[1]] = 1#town
+		self.world[self.townpos[0]  ][self.townpos[1]  ] = 1#town - Trade
+		self.world[self.townpos[0]+1][self.townpos[1]+1] = 8#town - Forge
+		self.world[self.townpos[0]+1][self.townpos[1]+2] = 7#town - Anvil
+		self.world[self.townpos[0]-1][self.townpos[1]+2] = 9#town - Inn
 		
 		self.world[self.townpos[0]-1][self.townpos[1]-3] = 2#wall
 		self.world[self.townpos[0]  ][self.townpos[1]-3] = 2
@@ -345,6 +380,7 @@ class world:
 		self.world[self.townpos[0]-1][self.townpos[1]+3] = 2
 		self.world[self.townpos[0]+1][self.townpos[1]+3] = 2
 		
+		print "	Seeding the landmasses..."
 		queue = []
 		for i in xrange(size[0]/20*size[1]/20):
 			x = random.randrange(0, size[0])
@@ -357,6 +393,7 @@ class world:
 		
 		
 		#Create the land structures:
+		print "	Growing the land structures..."
 		caves = []
 		while queue:
 			x, y = queue.pop(random.randrange(0,len(queue)))
@@ -378,6 +415,7 @@ class world:
 						queue.append((x2,y2))
 		
 		#plant trees:
+		print "	Planting trees..."
 		for _ in xrange(size[0]/15*size[1]/15*2):
 			x = random.randrange(0, size[0])
 			y = random.randrange(0, size[1])
@@ -386,6 +424,7 @@ class world:
 				self.world[x][y] = 4#tree
 		
 		#spawn ores:
+		print "	Spawning ores..."
 		diamonds = 0
 		for _ in xrange(size[0]/20*size[1]/20):
 			while 1:
@@ -418,6 +457,7 @@ class world:
 					break
 		
 		#check for valid cave positions and make them:
+		print "Constructing caves..."
 		toMake = size[0]/60*size[1]/60
 		cavesMade = 0
 		while toMake and caves:
@@ -464,7 +504,6 @@ class world:
 							
 							if dir in (0., 45., 90., 135., 180., -45., -90., -135., -180.):
 								x2, y2 = {0:(1, 0), 45:(1, -1), 90:(0, -1), 135:(-1, -1), 180:(-1, 0), -45:(1, 1), -90:(0, 1), -135:(-1, 1), -180:(-1, 0)}[int(dir)]
-								
 								if x2 and y2:
 									r = random.randrange(0, 2)
 									if self.CheckOpen((x+x2*r, y+y2*(1-r))):
@@ -482,7 +521,6 @@ class world:
 										continue
 							else:
 								x2, y2 = x, y
-								
 								if -45 < dir <= 45:
 									x2 += 1
 								elif -135 < dir <= -45:
@@ -584,19 +622,8 @@ class world:
 			self.doStep = True
 		elif key == " ":#action
 			x, y = self.facing[2]
-			if self.facing[0] == 2:#walls
-				self.world[x][y] = 0
-				inventory.add("Rubble")
-			elif self.facing[0] == 4:#tree
-				self.world[x][y] = 0
-				inventory.add("Wood", 5)
-			elif self.facing[0] == 5:#gold ore
-				self.world[x][y] = 2
-				inventory.add("Gold", random.choice((9, 10, 10, 10, 11)))
-			elif self.facing[0] == 6:#diamond:
-				self.world[x][y] = 2
-				inventory.add("Diamond")
-			elif self.facing[0] == 0 and self.facing[1] >= 0:#emptyspace, do entities:
+			facing = self.facing[0]
+			if facing == 0 and self.facing[1] >= 0:#emptyspace, do entities:
 				for i, entity in enumerate(self.entities):
 					if x == entity[0][0] and y == entity[0][1]:
 						dmg = random.choice((0, int(self.you[1]/2), self.you[1], self.you[1], self.you[1], self.you[1], self.you[1], self.you[1], self.you[1], self.you[1], int(self.you[1]*1.3), int(self.you[1]*1.6), self.you[1]*2))
@@ -613,7 +640,55 @@ class world:
 						else:
 							cmd.Print("You attacked %s, but it missed..." % self.creatures[entity[1]][1])
 						break
-						
+			elif facing == 2:#walls
+				self.world[x][y] = 0
+				inventory.add("Rubble")
+			elif facing == 4:#tree
+				self.world[x][y] = 0
+				inventory.add("Wood", 5)
+			elif facing == 5:#gold ore
+				self.world[x][y] = 2
+				inventory.add("Gold", random.choice((4, 5, 5, 5, 6)))
+			elif facing == 6:#diamond:
+				self.world[x][y] = 2
+				inventory.add("Diamond")
+			elif facing == 3:#dungeon/cave
+				if random.randrange(1, 101) <= 30:
+					Treasure = (random.choice(("Candy", "Spellbook of Fire Congrugation", "Spellbook of Bloodbending", "The Seed")), 1)
+				else:
+					Treasure = random.choice((("Coins", 250), ("Coins", 320), ("Diamond Sword", 1)))
+				
+				for _ in xrange(random.randrange(8, 26)):
+					if random.randrange(1, 101) <= 40:
+						#monster
+						pass
+					if random.randrange(1, 101) <= 25:
+						#small loot
+						pass
+				
+				if random.randrange(1, 101) <= 33:
+					#monster guards the treasure
+					#get treasure
+					pass
+				else:
+					#get treasure
+					pass
+				
+				pass
+			elif facing == 9:##Town - inn
+				if inventory.take("Coins", 20):
+					#heal:
+					self.you[2] = self.you[3]
+					self.you[4] = self.you[5]
+					inventory.statsupdate = True
+					
+					cmd.Print("You spent the night at the inn. You now feel fully rested and ready for more adventure!")
+					
+					#clean out and respawn monsters:
+					self.entities = []
+					self.SpawnMonsters()
+					
+					
 			self.doStep = True
 	def UpdateFacing(self):
 		x, y = self.you[0]
@@ -646,7 +721,7 @@ class world:
 		self.facing[2] = [x, y]
 		
 		if self.facing <> prev or self.facing[1] >= 0: inventory.facingupdate = True
-	def render(self):
+	def render(self, showSelf=True):
 		render = []
 		camx = Clamp(self.you[0][0]-self.size[0]/2, 0, self.worldsize[0]-self.size[0])
 		camy = Clamp(self.you[0][1]-self.size[1]/2, 0, self.worldsize[1]-self.size[1])
@@ -660,7 +735,7 @@ class world:
 			line = []
 			for x in xrange(camx, camx+self.size[0]):
 				if x == self.you[0][0] and y == self.you[0][1]:
-					line.append(self.sprYou)
+					line.append(self.sprYou if showSelf else "   ")
 					continue
 				if self.world[x][y]:
 					line.append(self.spr[self.world[x][y]])
@@ -674,14 +749,12 @@ class world:
 			render.append("".join(line))
 		terminal.blit(render, self.pos)
 
-#run game:		
+#run game:
 terminal = terminal()
 cmd = cmd()
 cmd.Print("Welcome to CMDRPG!")
 inventory = inventory()
-print "Generating the world..."
 world = world()
-
 
 while 1:
 	#15 fps
